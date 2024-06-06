@@ -39836,20 +39836,44 @@ function getIssueProps(context) {
   };
 }
 
-function createComment(octokit, context, body) {
-  return octokit.rest.issues.createComment({
-    ...getIssueProps(context),
-    body,
-  });
+function getPullRequestProps(context) {
+  return {
+    owner: context.repository.owner,
+    repo: context.repository.name,
+    pull_number: context.pull_request.number,
+  };
 }
 
-function updateIssue(octokit, context, reminder) {
-  const body = addReminderToBody(context.issue.body, reminder);
+function createComment(octokit, context, body) {
+  if (context.issue) {
+    return octokit.rest.issues.createComment({
+      ...getIssueProps(context),
+      body,
+    });
+  } else if (context.pull_request) {
+    return octokit.rest.pulls.createReviewComment({
+      ...getPullRequestProps(context),
+      body,
+    });
+  }
+}
 
-  return octokit.rest.issues.update({
-    ...getIssueProps(context),
-    body,
-  });
+function updateIssueOrPullRequest(octokit, context, reminder) {
+  const body = context.issue
+    ? addReminderToBody(context.issue.body, reminder)
+    : addReminderToBody(context.pull_request.body, reminder);
+
+  if (context.issue) {
+    return octokit.rest.issues.update({
+      ...getIssueProps(context),
+      body,
+    });
+  } else if (context.pull_request) {
+    return octokit.rest.pulls.update({
+      ...getPullRequestProps(context),
+      body,
+    });
+  }
 }
 
 async function run() {
@@ -39892,15 +39916,15 @@ async function run() {
   }
 
   core.startGroup('add label');
-  core.info(JSON.stringify(getIssueProps(context), null, 1));
+  core.info(JSON.stringify(context.issue ? getIssueProps(context) : getPullRequestProps(context), null, 1));
   await octokit.rest.issues.addLabels({
     ...getIssueProps(context),
     labels: [LABEL],
   });
   core.endGroup();
 
-  core.startGroup('update issue');
-  await updateIssue(octokit, context, reminder);
+  core.startGroup('update issue or pull request');
+  await updateIssueOrPullRequest(octokit, context, reminder);
   core.endGroup();
 
   core.startGroup('add reminder comment');
@@ -39915,7 +39939,6 @@ async function run() {
 }
 
 run();
-
 })();
 
 module.exports = __webpack_exports__;
